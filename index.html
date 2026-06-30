@@ -301,7 +301,7 @@
 
     let stars, motes;
     function buildStars() {
-      const n = Math.floor((innerWidth * innerHeight) / 6500) + 40;
+      const n = Math.floor((innerWidth * innerHeight) / 3200) + 120;
       // overscan by ±18% so the parallax shift never reveals a bare edge
       stars = Array.from({ length: n }, () => {
         // ~18% are "near" stars: drawn in front of the logo, biggest parallax
@@ -356,9 +356,9 @@
       if (ang === 90)            { const t = g; g = -b; b = t; }
       else if (ang === -90 || ang === 270) { const t = g; g = b; b = -t; }
       if (baseGamma === null) { baseGamma = g; baseBeta = b; }
-      // /18 => sensitive: a modest tilt already swings the field fully
-      tiltTX = clamp1((g - baseGamma) / 18);
-      tiltTY = clamp1((b - baseBeta) / 18);
+      // /30 => gentler: needs a fuller tilt, so motion reads smooth not twitchy
+      tiltTX = clamp1((g - baseGamma) / 30);
+      tiltTY = clamp1((b - baseBeta) / 30);
       gotTilt = true;
     }
 
@@ -409,12 +409,11 @@
       sxF.clearRect(0, 0, sw, sh);
       sxF.globalCompositeOperation = "lighter";
 
-      // ease the tilt toward its target so motion feels fluid, not jittery
-      tiltX += (tiltTX - tiltX) * 0.08;
-      tiltY += (tiltTY - tiltY) * 0.08;
+      // heavy easing => slow, smooth glide that absorbs gyro jitter
+      tiltX += (tiltTX - tiltX) * 0.04;
+      tiltY += (tiltTY - tiltY) * 0.04;
       // combined parallax: pointer (desktop) + gyroscope (mobile).
-      // Tilt is pushed hard (~16% of screen) so the depth is unmistakable.
-      const reach = Math.min(sw, sh) * 0.16;
+      const reach = Math.min(sw, sh) * 0.14;
       const parX = pmx * 18 + tiltX * reach;
       const parY = pmy * 18 + tiltY * reach;
 
@@ -457,8 +456,8 @@
         c.beginPath();
         c.arc(x, y, s.r, 0, TAU2);
         c.fill();
-        // tiny glow on the brighter ones
-        if (s.r > 1.1 * sdpr) {
+        // tiny glow on the brighter ones (kept sparse so the dense field stays cheap)
+        if (s.r > 1.35 * sdpr) {
           const g = c.createRadialGradient(x, y, 0, x, y, s.r * 6);
           g.addColorStop(0, `rgba(200,170,255,${alpha * 0.5})`);
           g.addColorStop(1, "rgba(200,170,255,0)");
