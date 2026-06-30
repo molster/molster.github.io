@@ -36,6 +36,14 @@
       display: block;
       z-index: 1;
     }
+    /* foreground stars sit ABOVE the text so the logo nests in the field */
+    #starsFront {
+      position: fixed;
+      inset: 0;
+      display: block;
+      z-index: 4;
+      pointer-events: none; /* taps still reach the page (iOS motion unlock) */
+    }
     /* subtle drifting radial glow behind everything */
     .aura {
       position: fixed;
@@ -122,7 +130,7 @@
       left: 50%;
       bottom: 5vh;
       transform: translateX(-50%) translateY(12px);
-      z-index: 3;
+      z-index: 6;
       display: flex;
       align-items: center;
       gap: 0.55em;
@@ -164,6 +172,7 @@
   <div class="aura"></div>
   <canvas id="fx"></canvas>
   <canvas id="stars"></canvas>
+  <canvas id="starsFront"></canvas>
 
   <div class="stage">
     <h1 class="title">The <span class="accent">AlabamaProgramma</span> Returns Soon</h1>
@@ -273,6 +282,8 @@
     // unblurred canvas so the points stay crisp against the smoke below.
     const sky = document.getElementById("stars");
     const sx = sky.getContext("2d");
+    const skyF = document.getElementById("starsFront"); // in front of the logo
+    const sxF = skyF.getContext("2d");
     const fx = document.getElementById("fx"); // nebula canvas (back plane)
     let sw, sh, sdpr;
     const TAU2 = Math.PI * 2;
@@ -280,10 +291,10 @@
 
     function sizeSky() {
       sdpr = Math.min(window.devicePixelRatio || 1, 2);
-      sw = sky.width = innerWidth * sdpr;
-      sh = sky.height = innerHeight * sdpr;
-      sky.style.width = innerWidth + "px";
-      sky.style.height = innerHeight + "px";
+      sw = sky.width = skyF.width = innerWidth * sdpr;
+      sh = sky.height = skyF.height = innerHeight * sdpr;
+      sky.style.width = skyF.style.width = innerWidth + "px";
+      sky.style.height = skyF.style.height = innerHeight + "px";
     }
     sizeSky();
     addEventListener("resize", () => { sizeSky(); buildStars(); });
@@ -292,16 +303,21 @@
     function buildStars() {
       const n = Math.floor((innerWidth * innerHeight) / 6500) + 40;
       // overscan by ±18% so the parallax shift never reveals a bare edge
-      stars = Array.from({ length: n }, () => ({
-        x: rng(-0.18, 1.18) * sw,
-        y: rng(-0.18, 1.18) * sh,
-        r: rng(0.4, 1.5) * sdpr,
-        depth: rng(0.2, 1),                 // parallax factor
-        base: rng(0.25, 0.9),               // base brightness
-        tw: rng(0.6, 2.2),                  // twinkle speed
-        ph: rng(0, TAU2),
-        warm: Math.random() < 0.25,         // some lean lilac/white
-      }));
+      stars = Array.from({ length: n }, () => {
+        // ~18% are "near" stars: drawn in front of the logo, biggest parallax
+        const front = Math.random() < 0.18;
+        return {
+          x: rng(-0.18, 1.18) * sw,
+          y: rng(-0.18, 1.18) * sh,
+          r: (front ? rng(1, 2.1) : rng(0.4, 1.5)) * sdpr,
+          depth: front ? rng(0.9, 1.4) : rng(0.2, 0.85), // parallax factor
+          base: front ? rng(0.55, 1) : rng(0.25, 0.9),   // base brightness
+          tw: rng(0.6, 2.2),                 // twinkle speed
+          ph: rng(0, TAU2),
+          warm: Math.random() < 0.25,        // some lean lilac/white
+          front,
+        };
+      });
       // a few larger, slow glowing motes for depth
       const m = 14;
       motes = Array.from({ length: m }, () => ({
@@ -390,6 +406,8 @@
     function skyFrame() {
       st += 1;
       sx.clearRect(0, 0, sw, sh);
+      sxF.clearRect(0, 0, sw, sh);
+      sxF.globalCompositeOperation = "lighter";
 
       // ease the tilt toward its target so motion feels fluid, not jittery
       tiltX += (tiltTX - tiltX) * 0.08;
@@ -424,28 +442,30 @@
         sx.fill();
       }
 
-      // stars (sharp, twinkling, parallax by depth)
+      // stars (sharp, twinkling, parallax by depth).
+      // "front" stars render on the top canvas so the logo sits among them.
       for (const s of stars) {
         s.ph += 0.02 * s.tw;
         const tw = 0.55 + 0.45 * Math.sin(s.ph);
         const alpha = s.base * tw;
         const x = s.x + parX * s.depth;
         const y = s.y + parY * s.depth;
-        sx.fillStyle = s.warm
+        const c = s.front ? sxF : sx;
+        c.fillStyle = s.warm
           ? `rgba(220,200,255,${alpha})`
           : `rgba(255,255,255,${alpha})`;
-        sx.beginPath();
-        sx.arc(x, y, s.r, 0, TAU2);
-        sx.fill();
+        c.beginPath();
+        c.arc(x, y, s.r, 0, TAU2);
+        c.fill();
         // tiny glow on the brighter ones
         if (s.r > 1.1 * sdpr) {
-          const g = sx.createRadialGradient(x, y, 0, x, y, s.r * 6);
+          const g = c.createRadialGradient(x, y, 0, x, y, s.r * 6);
           g.addColorStop(0, `rgba(200,170,255,${alpha * 0.5})`);
           g.addColorStop(1, "rgba(200,170,255,0)");
-          sx.fillStyle = g;
-          sx.beginPath();
-          sx.arc(x, y, s.r * 6, 0, TAU2);
-          sx.fill();
+          c.fillStyle = g;
+          c.beginPath();
+          c.arc(x, y, s.r * 6, 0, TAU2);
+          c.fill();
         }
       }
 
