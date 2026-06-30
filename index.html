@@ -19,12 +19,15 @@
       background: #05010a;
       font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
     }
-    /* canvas holds the particle / nebula field */
+    /* canvas holds the drifting nebula / smoke field */
     #fx {
       position: fixed;
       inset: 0;
       display: block;
       z-index: 0;
+      /* heavy blur fuses the moving blobs into smoke */
+      filter: blur(45px) saturate(1.25);
+      opacity: 0.9;
     }
     /* subtle drifting radial glow behind everything */
     .aura {
@@ -135,66 +138,71 @@
     resize();
     addEventListener("resize", resize);
 
-    // Particle field — purple embers drifting upward through a dark void.
-    const COUNT = Math.floor((innerWidth * innerHeight) / 9000) + 60;
-    const palette = ["#8a2be2", "#5a189a", "#b388e8", "#3b0a5c", "#c08bff"];
+    // Nebula / smoke field — a handful of large, soft purple clouds that
+    // drift, swell and breathe. The heavy CSS blur on the canvas fuses them
+    // into one slow-moving, smoky gradient.
+    const palette = ["#8a2be2", "#5a189a", "#7b2fbf", "#3b0a5c", "#c08bff", "#4b0082"];
     const rnd = (a, b) => a + Math.random() * (b - a);
+    const TAU = Math.PI * 2;
 
-    const particles = Array.from({ length: COUNT }, () => spawn(true));
+    const CLOUD_COUNT = 9;
+    const clouds = Array.from({ length: CLOUD_COUNT }, makeCloud);
 
-    function spawn(initial) {
+    function makeCloud() {
+      const base = Math.min(w, h);
       return {
-        x: Math.random() * w,
-        y: initial ? Math.random() * h : h + rnd(0, 60) * dpr,
-        r: rnd(0.6, 2.6) * dpr,
-        vy: -rnd(0.15, 0.7) * dpr,
-        vx: rnd(-0.25, 0.25) * dpr,
-        a: rnd(0.15, 0.85),
-        tw: rnd(0.004, 0.02),
-        ph: rnd(0, Math.PI * 2),
+        // home position the cloud orbits around (in 0..1 space)
+        hx: Math.random(),
+        hy: Math.random(),
+        // independent slow oscillation for x / y wandering
+        ax: rnd(0.05, 0.22),      // wander amplitude
+        ay: rnd(0.05, 0.22),
+        fx: rnd(0.02, 0.06),      // wander frequency
+        fy: rnd(0.02, 0.06),
+        px: rnd(0, TAU),          // phase offsets
+        py: rnd(0, TAU),
+        r: rnd(0.35, 0.7) * base, // radius
+        pr: rnd(0.04, 0.09) * base, // radius pulse amount
+        fr: rnd(0.01, 0.03),      // pulse frequency
+        pp: rnd(0, TAU),
+        a: rnd(0.18, 0.4),        // peak alpha
         c: palette[(Math.random() * palette.length) | 0],
       };
     }
 
-    // Mouse parallax / attraction
-    let mx = w / 2, my = h / 2;
+    // soft pointer influence — clouds lean gently toward the cursor
+    let mx = 0.5, my = 0.5;
     addEventListener("pointermove", e => {
-      mx = e.clientX * dpr;
-      my = e.clientY * dpr;
+      mx = e.clientX / innerWidth;
+      my = e.clientY / innerHeight;
     });
 
+    let t = 0;
+
     function frame() {
-      // fade previous frame for soft trails
+      t += 0.18; // small step => slow, smoky drift
+
+      // clear to the void each frame (blur + additive blending do the smoke)
       ctx.globalCompositeOperation = "source-over";
-      ctx.fillStyle = "rgba(5,1,10,0.22)";
+      ctx.fillStyle = "#05010a";
       ctx.fillRect(0, 0, w, h);
 
       ctx.globalCompositeOperation = "lighter";
-      for (const p of particles) {
-        // gentle swirl + pull toward cursor
-        const dx = mx - p.x, dy = my - p.y;
-        const d2 = dx * dx + dy * dy;
-        const pull = Math.min(40000 / (d2 + 8000), 0.6);
-        p.vx += (dx > 0 ? 1 : -1) * pull * 0.002 * dpr;
+      for (const c of clouds) {
+        const cx = (c.hx + Math.sin(t * c.fx + c.px) * c.ax
+                    + (mx - 0.5) * 0.06) * w;
+        const cy = (c.hy + Math.cos(t * c.fy + c.py) * c.ay
+                    + (my - 0.5) * 0.06) * h;
+        const radius = c.r + Math.sin(t * c.fr + c.pp) * c.pr;
+        const alpha = c.a * (0.7 + 0.3 * Math.sin(t * c.fr * 1.3 + c.pp));
 
-        p.x += p.vx;
-        p.y += p.vy;
-        p.ph += p.tw;
-
-        if (p.y < -20 * dpr || p.x < -40 * dpr || p.x > w + 40 * dpr) {
-          Object.assign(p, spawn(false));
-        }
-
-        const flick = 0.55 + 0.45 * Math.sin(p.ph);
-        const alpha = p.a * flick;
-        const glow = p.r * 6;
-
-        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, glow);
-        g.addColorStop(0, hexA(p.c, alpha));
-        g.addColorStop(1, hexA(p.c, 0));
+        const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+        g.addColorStop(0, hexA(c.c, alpha));
+        g.addColorStop(0.5, hexA(c.c, alpha * 0.35));
+        g.addColorStop(1, hexA(c.c, 0));
         ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, glow, 0, Math.PI * 2);
+        ctx.arc(cx, cy, radius, 0, TAU);
         ctx.fill();
       }
 
