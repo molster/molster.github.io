@@ -116,8 +116,47 @@
       100% { content: ""; }
     }
 
+    /* mobile motion hint pill */
+    .hint {
+      position: fixed;
+      left: 50%;
+      bottom: 5vh;
+      transform: translateX(-50%) translateY(12px);
+      z-index: 3;
+      display: flex;
+      align-items: center;
+      gap: 0.55em;
+      padding: 0.7em 1.2em;
+      border-radius: 999px;
+      font-size: clamp(0.72rem, 3.4vw, 0.95rem);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #efe4ff;
+      background: rgba(40, 8, 70, 0.45);
+      border: 1px solid rgba(192, 139, 255, 0.45);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      box-shadow: 0 0 24px rgba(138, 43, 226, 0.45);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+    .hint.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    .hint .ico {
+      font-size: 1.2em;
+      animation: tiltwave 1.8s ease-in-out infinite;
+      display: inline-block;
+    }
+    @keyframes tiltwave {
+      0%, 100% { transform: rotate(-14deg); }
+      50%      { transform: rotate(14deg); }
+    }
+
     @media (prefers-reduced-motion: reduce) {
-      .aura, .title, .accent { animation: none; }
+      .aura, .title, .accent, .hint .ico { animation: none; }
     }
   </style>
 </head>
@@ -130,6 +169,8 @@
     <h1 class="title">The <span class="accent">AlabamaProgramma</span> Returns Soon</h1>
     <div class="sub">Something new is taking shape<span class="dots"></span></div>
   </div>
+
+  <div id="hint" class="hint"><span class="ico">📱</span><span id="hintText">Tap &amp; tilt to explore</span></div>
 
   <script>
     const canvas = document.getElementById("fx");
@@ -232,6 +273,7 @@
     // unblurred canvas so the points stay crisp against the smoke below.
     const sky = document.getElementById("stars");
     const sx = sky.getContext("2d");
+    const fx = document.getElementById("fx"); // nebula canvas (back plane)
     let sw, sh, sdpr;
     const TAU2 = Math.PI * 2;
     const rng = (a, b) => a + Math.random() * (b - a);
@@ -249,9 +291,10 @@
     let stars, motes;
     function buildStars() {
       const n = Math.floor((innerWidth * innerHeight) / 6500) + 40;
+      // overscan by ±18% so the parallax shift never reveals a bare edge
       stars = Array.from({ length: n }, () => ({
-        x: Math.random() * sw,
-        y: Math.random() * sh,
+        x: rng(-0.18, 1.18) * sw,
+        y: rng(-0.18, 1.18) * sh,
         r: rng(0.4, 1.5) * sdpr,
         depth: rng(0.2, 1),                 // parallax factor
         base: rng(0.25, 0.9),               // base brightness
@@ -297,12 +340,14 @@
       if (ang === 90)            { const t = g; g = -b; b = t; }
       else if (ang === -90 || ang === 270) { const t = g; g = b; b = -t; }
       if (baseGamma === null) { baseGamma = g; baseBeta = b; }
-      tiltTX = clamp1((g - baseGamma) / 28);
-      tiltTY = clamp1((b - baseBeta) / 28);
+      // /18 => sensitive: a modest tilt already swings the field fully
+      tiltTX = clamp1((g - baseGamma) / 18);
+      tiltTY = clamp1((b - baseBeta) / 18);
+      gotTilt = true;
     }
 
     // iOS 13+ gates motion behind a permission prompt that needs a user gesture.
-    let tiltArmed = false;
+    let tiltArmed = false, gotTilt = false;
     function enableTilt() {
       if (tiltArmed) return;
       const D = window.DeviceOrientationEvent;
@@ -346,28 +391,38 @@
       st += 1;
       sx.clearRect(0, 0, sw, sh);
 
-      // motes (soft additive blobs)
+      // ease the tilt toward its target so motion feels fluid, not jittery
+      tiltX += (tiltTX - tiltX) * 0.08;
+      tiltY += (tiltTY - tiltY) * 0.08;
+      // combined parallax: pointer (desktop) + gyroscope (mobile).
+      // Tilt is pushed hard (~16% of screen) so the depth is unmistakable.
+      const reach = Math.min(sw, sh) * 0.16;
+      const parX = pmx * 18 + tiltX * reach;
+      const parY = pmy * 18 + tiltY * reach;
+
+      // push the blurred nebula the opposite way for a deep back-plane
+      // (slight scale-up so the shift never bares an edge)
+      if (gotTilt || pmx || pmy) {
+        fx.style.transform =
+          `translate(${-(parX) * 0.5 / sdpr}px, ${-(parY) * 0.5 / sdpr}px) scale(1.12)`;
+      }
+
+      // motes (soft additive blobs) — mid-depth plane, half the star parallax
       sx.globalCompositeOperation = "lighter";
       for (const m of motes) {
         m.x += m.vx; m.y += m.vy; m.ph += 0.01 * m.tw;
         if (m.x < -20) m.x = sw + 20; if (m.x > sw + 20) m.x = -20;
         if (m.y < -20) m.y = sh + 20; if (m.y > sh + 20) m.y = -20;
+        const mx2 = m.x + parX * 0.5, my2 = m.y + parY * 0.5;
         const a = m.a * (0.6 + 0.4 * Math.sin(m.ph));
-        const g = sx.createRadialGradient(m.x, m.y, 0, m.x, m.y, m.r * 8);
+        const g = sx.createRadialGradient(mx2, my2, 0, mx2, my2, m.r * 8);
         g.addColorStop(0, `rgba(200,160,255,${a})`);
         g.addColorStop(1, "rgba(200,160,255,0)");
         sx.fillStyle = g;
         sx.beginPath();
-        sx.arc(m.x, m.y, m.r * 8, 0, TAU2);
+        sx.arc(mx2, my2, m.r * 8, 0, TAU2);
         sx.fill();
       }
-
-      // ease the tilt toward its target so motion feels fluid, not jittery
-      tiltX += (tiltTX - tiltX) * 0.08;
-      tiltY += (tiltTY - tiltY) * 0.08;
-      // combined parallax: pointer (desktop) + gyroscope (mobile)
-      const parX = pmx * 12 + tiltX * 45 * sdpr;
-      const parY = pmy * 12 + tiltY * 45 * sdpr;
 
       // stars (sharp, twinkling, parallax by depth)
       for (const s of stars) {
@@ -434,6 +489,37 @@
       requestAnimationFrame(skyFrame);
     }
     skyFrame();
+
+    // ── Motion hint ──────────────────────────────────────────────────────
+    // Show a little pill on touch devices nudging the user to tap (which also
+    // unlocks iOS motion) and tilt. It swaps to "Tilt your phone" once motion
+    // is live, then fades away.
+    const hint = document.getElementById("hint");
+    const hintText = document.getElementById("hintText");
+    const isTouch = matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
+
+    if (isTouch && hint) {
+      setTimeout(() => hint.classList.add("show"), 900);
+
+      let phase2 = false;
+      const watch = setInterval(() => {
+        if (gotTilt && !phase2) {
+          // motion is flowing — celebrate, then fade out
+          phase2 = true;
+          hintText.textContent = "Tilt your phone";
+          setTimeout(() => hint.classList.remove("show"), 2600);
+          clearInterval(watch);
+        }
+      }, 200);
+
+      // hide on tap regardless, after a beat (so the gesture still arms iOS)
+      addEventListener("touchend", () => {
+        setTimeout(() => { if (!gotTilt) hint.classList.remove("show"); }, 4000);
+      }, { once: true });
+
+      // safety net: never let it linger forever
+      setTimeout(() => hint.classList.remove("show"), 12000);
+    }
   </script>
 </body>
 </html>
