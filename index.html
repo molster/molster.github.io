@@ -29,6 +29,13 @@
       filter: blur(45px) saturate(1.25);
       opacity: 0.9;
     }
+    /* sharp star layer sits above the blurred nebula, below the text */
+    #stars {
+      position: fixed;
+      inset: 0;
+      display: block;
+      z-index: 1;
+    }
     /* subtle drifting radial glow behind everything */
     .aura {
       position: fixed;
@@ -117,6 +124,7 @@
 <body>
   <div class="aura"></div>
   <canvas id="fx"></canvas>
+  <canvas id="stars"></canvas>
 
   <div class="stage">
     <h1 class="title">The <span class="accent">AlabamaProgramma</span> Returns Soon</h1>
@@ -215,6 +223,168 @@
     }
 
     frame();
+  </script>
+
+  <script>
+    // ── Star layer ───────────────────────────────────────────────────────
+    // Sharp twinkling stars (with parallax), slow glowing motes, and the
+    // occasional shooting star streaking across the nebula. Lives on its own
+    // unblurred canvas so the points stay crisp against the smoke below.
+    const sky = document.getElementById("stars");
+    const sx = sky.getContext("2d");
+    let sw, sh, sdpr;
+    const TAU2 = Math.PI * 2;
+    const rng = (a, b) => a + Math.random() * (b - a);
+
+    function sizeSky() {
+      sdpr = Math.min(window.devicePixelRatio || 1, 2);
+      sw = sky.width = innerWidth * sdpr;
+      sh = sky.height = innerHeight * sdpr;
+      sky.style.width = innerWidth + "px";
+      sky.style.height = innerHeight + "px";
+    }
+    sizeSky();
+    addEventListener("resize", () => { sizeSky(); buildStars(); });
+
+    let stars, motes;
+    function buildStars() {
+      const n = Math.floor((innerWidth * innerHeight) / 6500) + 40;
+      stars = Array.from({ length: n }, () => ({
+        x: Math.random() * sw,
+        y: Math.random() * sh,
+        r: rng(0.4, 1.5) * sdpr,
+        depth: rng(0.2, 1),                 // parallax factor
+        base: rng(0.25, 0.9),               // base brightness
+        tw: rng(0.6, 2.2),                  // twinkle speed
+        ph: rng(0, TAU2),
+        warm: Math.random() < 0.25,         // some lean lilac/white
+      }));
+      // a few larger, slow glowing motes for depth
+      const m = 14;
+      motes = Array.from({ length: m }, () => ({
+        x: Math.random() * sw,
+        y: Math.random() * sh,
+        r: rng(2, 5) * sdpr,
+        vx: rng(-0.08, 0.08) * sdpr,
+        vy: rng(-0.05, 0.05) * sdpr,
+        a: rng(0.05, 0.2),
+        ph: rng(0, TAU2),
+        tw: rng(0.3, 0.9),
+      }));
+    }
+    buildStars();
+
+    // parallax follows the pointer a touch
+    let pmx = 0, pmy = 0;
+    addEventListener("pointermove", e => {
+      pmx = (e.clientX / innerWidth - 0.5) * sdpr;
+      pmy = (e.clientY / innerHeight - 0.5) * sdpr;
+    });
+
+    // shooting stars
+    const shooters = [];
+    let nextShoot = 60;
+    function spawnShooter() {
+      const fromLeft = Math.random() < 0.5;
+      const angle = rng(0.18, 0.42) * (fromLeft ? 1 : -1) + (fromLeft ? 0 : Math.PI);
+      const speed = rng(9, 16) * sdpr;
+      shooters.push({
+        x: fromLeft ? rng(-0.1, 0.4) * sw : rng(0.6, 1.1) * sw,
+        y: rng(-0.05, 0.4) * sh,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        len: rng(120, 260) * sdpr,
+        life: 0,
+        max: rng(45, 80),
+      });
+    }
+
+    let st = 0;
+    function skyFrame() {
+      st += 1;
+      sx.clearRect(0, 0, sw, sh);
+
+      // motes (soft additive blobs)
+      sx.globalCompositeOperation = "lighter";
+      for (const m of motes) {
+        m.x += m.vx; m.y += m.vy; m.ph += 0.01 * m.tw;
+        if (m.x < -20) m.x = sw + 20; if (m.x > sw + 20) m.x = -20;
+        if (m.y < -20) m.y = sh + 20; if (m.y > sh + 20) m.y = -20;
+        const a = m.a * (0.6 + 0.4 * Math.sin(m.ph));
+        const g = sx.createRadialGradient(m.x, m.y, 0, m.x, m.y, m.r * 8);
+        g.addColorStop(0, `rgba(200,160,255,${a})`);
+        g.addColorStop(1, "rgba(200,160,255,0)");
+        sx.fillStyle = g;
+        sx.beginPath();
+        sx.arc(m.x, m.y, m.r * 8, 0, TAU2);
+        sx.fill();
+      }
+
+      // stars (sharp, twinkling, slight parallax)
+      for (const s of stars) {
+        s.ph += 0.02 * s.tw;
+        const tw = 0.55 + 0.45 * Math.sin(s.ph);
+        const alpha = s.base * tw;
+        const x = s.x + pmx * 12 * s.depth;
+        const y = s.y + pmy * 12 * s.depth;
+        sx.fillStyle = s.warm
+          ? `rgba(220,200,255,${alpha})`
+          : `rgba(255,255,255,${alpha})`;
+        sx.beginPath();
+        sx.arc(x, y, s.r, 0, TAU2);
+        sx.fill();
+        // tiny glow on the brighter ones
+        if (s.r > 1.1 * sdpr) {
+          const g = sx.createRadialGradient(x, y, 0, x, y, s.r * 6);
+          g.addColorStop(0, `rgba(200,170,255,${alpha * 0.5})`);
+          g.addColorStop(1, "rgba(200,170,255,0)");
+          sx.fillStyle = g;
+          sx.beginPath();
+          sx.arc(x, y, s.r * 6, 0, TAU2);
+          sx.fill();
+        }
+      }
+
+      // shooting stars
+      if (--nextShoot <= 0) {
+        spawnShooter();
+        nextShoot = Math.floor(rng(120, 320)); // ~2–5s between streaks @60fps
+      }
+      for (let i = shooters.length - 1; i >= 0; i--) {
+        const sh2 = shooters[i];
+        sh2.x += sh2.vx; sh2.y += sh2.vy; sh2.life++;
+        const fade = sh2.life < 10 ? sh2.life / 10
+                   : Math.max(0, 1 - (sh2.life - 10) / (sh2.max - 10));
+        const tx = sh2.x - sh2.vx / Math.hypot(sh2.vx, sh2.vy) * sh2.len;
+        const ty = sh2.y - sh2.vy / Math.hypot(sh2.vx, sh2.vy) * sh2.len;
+        const grad = sx.createLinearGradient(sh2.x, sh2.y, tx, ty);
+        grad.addColorStop(0, `rgba(240,225,255,${0.9 * fade})`);
+        grad.addColorStop(0.4, `rgba(170,110,255,${0.5 * fade})`);
+        grad.addColorStop(1, "rgba(138,43,226,0)");
+        sx.strokeStyle = grad;
+        sx.lineWidth = 2 * sdpr;
+        sx.lineCap = "round";
+        sx.beginPath();
+        sx.moveTo(sh2.x, sh2.y);
+        sx.lineTo(tx, ty);
+        sx.stroke();
+        // bright head
+        const hg = sx.createRadialGradient(sh2.x, sh2.y, 0, sh2.x, sh2.y, 6 * sdpr);
+        hg.addColorStop(0, `rgba(255,255,255,${fade})`);
+        hg.addColorStop(1, "rgba(255,255,255,0)");
+        sx.fillStyle = hg;
+        sx.beginPath();
+        sx.arc(sh2.x, sh2.y, 6 * sdpr, 0, TAU2);
+        sx.fill();
+
+        if (sh2.life >= sh2.max || sh2.x < -300 || sh2.x > sw + 300 || sh2.y > sh + 300) {
+          shooters.splice(i, 1);
+        }
+      }
+
+      requestAnimationFrame(skyFrame);
+    }
+    skyFrame();
   </script>
 </body>
 </html>
