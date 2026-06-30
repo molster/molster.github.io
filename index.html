@@ -1,8 +1,212 @@
-<html>
-  <head>
-    <meta property="og:image" content="https://media.discordapp.net/attachments/414216501436874752/1336538300378251315/file-6FzTetEEFAqq5Swq6CaLkh.png?ex=67a42bca&is=67a2da4a&hm=7d31708dfd6908900feb0a95ab9ab34f1bcb00e5591237dcb819b23ce93cac0f&=&format=webp&quality=lossless&width=672&height=672">
-  </head>
-  <center>
-  <img src="https://media.discordapp.net/attachments/414216501436874752/1336538300378251315/file-6FzTetEEFAqq5Swq6CaLkh.png?ex=67a42bca&is=67a2da4a&hm=7d31708dfd6908900feb0a95ab9ab34f1bcb00e5591237dcb819b23ce93cac0f&=&format=webp&quality=lossless" />
-</center>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>The AlabamaProgramma Returns Soon</title>
+  <meta property="og:title" content="The AlabamaProgramma Returns Soon" />
+  <meta property="og:description" content="Something is coming back from the dark." />
+  <style>
+    :root {
+      --purple: #8a2be2;
+      --deep:   #3b0a5c;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+      background: #05010a;
+      font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+    }
+    /* canvas holds the particle / nebula field */
+    #fx {
+      position: fixed;
+      inset: 0;
+      display: block;
+      z-index: 0;
+    }
+    /* subtle drifting radial glow behind everything */
+    .aura {
+      position: fixed;
+      inset: -20%;
+      z-index: 0;
+      background:
+        radial-gradient(circle at 30% 35%, rgba(138,43,226,0.28), transparent 45%),
+        radial-gradient(circle at 70% 65%, rgba(75,0,130,0.30), transparent 50%),
+        radial-gradient(circle at 50% 50%, rgba(40,0,70,0.25), transparent 60%);
+      filter: blur(20px);
+      animation: drift 18s ease-in-out infinite alternate;
+    }
+    @keyframes drift {
+      0%   { transform: translate(-2%, -1%) scale(1.05); }
+      100% { transform: translate(2%, 1%)  scale(1.15); }
+    }
+
+    .stage {
+      position: relative;
+      z-index: 2;
+      height: 100%;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 0 6vw;
+    }
+
+    .title {
+      font-size: clamp(2rem, 7vw, 6rem);
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      line-height: 1.1;
+      color: #f3e9ff;
+      text-shadow:
+        0 0 8px rgba(138,43,226,0.9),
+        0 0 24px rgba(138,43,226,0.7),
+        0 0 60px rgba(75,0,130,0.8),
+        0 0 110px rgba(75,0,130,0.6);
+      animation: breathe 4.5s ease-in-out infinite;
+    }
+    .title .accent {
+      background: linear-gradient(90deg, #c08bff, #8a2be2, #5a189a, #c08bff);
+      background-size: 300% 100%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: flow 8s linear infinite;
+    }
+    @keyframes flow {
+      0%   { background-position: 0% 50%; }
+      100% { background-position: 300% 50%; }
+    }
+    @keyframes breathe {
+      0%, 100% { opacity: 0.92; transform: scale(1); }
+      50%      { opacity: 1;    transform: scale(1.015); }
+    }
+
+    .sub {
+      margin-top: 1.6rem;
+      font-size: clamp(0.8rem, 2vw, 1.15rem);
+      letter-spacing: 0.5em;
+      text-transform: uppercase;
+      color: #b388e8;
+      opacity: 0.85;
+    }
+    .dots::after {
+      content: "";
+      animation: dots 2s steps(4, end) infinite;
+    }
+    @keyframes dots {
+      0%   { content: ""; }
+      25%  { content: "."; }
+      50%  { content: ".."; }
+      75%  { content: "..."; }
+      100% { content: ""; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .aura, .title, .accent { animation: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="aura"></div>
+  <canvas id="fx"></canvas>
+
+  <div class="stage">
+    <h1 class="title">The <span class="accent">AlabamaProgramma</span> Returns Soon</h1>
+    <div class="sub">Loading from the dark<span class="dots"></span></div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("fx");
+    const ctx = canvas.getContext("2d");
+    let w, h, dpr;
+
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      w = canvas.width = innerWidth * dpr;
+      h = canvas.height = innerHeight * dpr;
+      canvas.style.width = innerWidth + "px";
+      canvas.style.height = innerHeight + "px";
+    }
+    resize();
+    addEventListener("resize", resize);
+
+    // Particle field — purple embers drifting upward through a dark void.
+    const COUNT = Math.floor((innerWidth * innerHeight) / 9000) + 60;
+    const palette = ["#8a2be2", "#5a189a", "#b388e8", "#3b0a5c", "#c08bff"];
+    const rnd = (a, b) => a + Math.random() * (b - a);
+
+    const particles = Array.from({ length: COUNT }, () => spawn(true));
+
+    function spawn(initial) {
+      return {
+        x: Math.random() * w,
+        y: initial ? Math.random() * h : h + rnd(0, 60) * dpr,
+        r: rnd(0.6, 2.6) * dpr,
+        vy: -rnd(0.15, 0.7) * dpr,
+        vx: rnd(-0.25, 0.25) * dpr,
+        a: rnd(0.15, 0.85),
+        tw: rnd(0.004, 0.02),
+        ph: rnd(0, Math.PI * 2),
+        c: palette[(Math.random() * palette.length) | 0],
+      };
+    }
+
+    // Mouse parallax / attraction
+    let mx = w / 2, my = h / 2;
+    addEventListener("pointermove", e => {
+      mx = e.clientX * dpr;
+      my = e.clientY * dpr;
+    });
+
+    function frame() {
+      // fade previous frame for soft trails
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = "rgba(5,1,10,0.22)";
+      ctx.fillRect(0, 0, w, h);
+
+      ctx.globalCompositeOperation = "lighter";
+      for (const p of particles) {
+        // gentle swirl + pull toward cursor
+        const dx = mx - p.x, dy = my - p.y;
+        const d2 = dx * dx + dy * dy;
+        const pull = Math.min(40000 / (d2 + 8000), 0.6);
+        p.vx += (dx > 0 ? 1 : -1) * pull * 0.002 * dpr;
+
+        p.x += p.vx;
+        p.y += p.vy;
+        p.ph += p.tw;
+
+        if (p.y < -20 * dpr || p.x < -40 * dpr || p.x > w + 40 * dpr) {
+          Object.assign(p, spawn(false));
+        }
+
+        const flick = 0.55 + 0.45 * Math.sin(p.ph);
+        const alpha = p.a * flick;
+        const glow = p.r * 6;
+
+        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, glow);
+        g.addColorStop(0, hexA(p.c, alpha));
+        g.addColorStop(1, hexA(p.c, 0));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, glow, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      requestAnimationFrame(frame);
+    }
+
+    function hexA(hex, a) {
+      const n = parseInt(hex.slice(1), 16);
+      return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+    }
+
+    frame();
+  </script>
+</body>
 </html>
